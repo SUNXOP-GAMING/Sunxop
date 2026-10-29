@@ -1,0 +1,63 @@
+name: SUNXOP YouTube Auto Sync
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: sunxop-pages
+  cancel-in-progress: false
+
+jobs:
+  sync-and-deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout website
+        uses: actions/checkout@v4
+
+      - name: Fetch SUNXOP YouTube statistics
+        env:
+          STATS_URL: ${{ vars.SUNXOP_STATS_URL }}
+        run: |
+          test -n "$STATS_URL"
+
+          curl --fail --location --silent --show-error \
+            --retry 3 "$STATS_URL" -o stats.json
+
+          python3 -c '
+          import json
+          with open("stats.json", encoding="utf-8") as file:
+              data = json.load(file)
+
+          for key in ("subscriberCount", "viewCount", "videoCount"):
+              assert isinstance(data.get(key), (int, float))
+              assert data[key] >= 0
+
+          print("SUNXOP statistics updated successfully!")
+          '
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+
+      - name: Deploy SUNXOP website
+        id: deployment
+        uses: actions/deploy-pages@v4
